@@ -47,6 +47,11 @@ export default function VendorProfile() {
   const [attempt, setAttempt] = useState(0);
   const { t, catName } = useT();
 
+  // Own listing: vendors must never call/chat/request/save/review
+  // themselves (dashboard preview routes here). They get a dashboard entry
+  // instead; the customer CTA bar, bookmark and review writer are hidden.
+  const isOwnListing = !!user && !!vendor && (vendor.ownerId === user.id || user.vendorId === vendor.id);
+
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -106,6 +111,7 @@ export default function VendorProfile() {
   const bannerImg = vendor.photos.length > 0 ? { uri: vendor.photos[0] } : catImg;
 
   const toggleSave = async () => {
+    if (isOwnListing) return;
     tap('medium');
     const res = await onSave(vendor);
     if (res === null) return;
@@ -114,6 +120,7 @@ export default function VendorProfile() {
   };
 
   const openReview = () => {
+    if (isOwnListing) return;
     if (!user) {
       openAuthGate(t('sheet.authBody'), t('review.write'));
       return;
@@ -164,11 +171,13 @@ export default function VendorProfile() {
             <Pressable onPress={() => router.back()} hitSlop={12} style={styles.iconBtn}>
               <MaterialCommunityIcons name="arrow-left" size={22} color="#fff" />
             </Pressable>
-            <Pressable onPress={toggleSave} hitSlop={12} style={styles.iconBtn}>
-              <Pop popKey={saved}>
-                <MaterialCommunityIcons name={saved ? 'bookmark' : 'bookmark-outline'} size={24} color={saved ? '#FF6A3D' : '#fff'} />
-              </Pop>
-            </Pressable>
+            {isOwnListing ? null : (
+              <Pressable onPress={toggleSave} hitSlop={12} style={styles.iconBtn}>
+                <Pop popKey={saved}>
+                  <MaterialCommunityIcons name={saved ? 'bookmark' : 'bookmark-outline'} size={24} color={saved ? '#FF6A3D' : '#fff'} />
+                </Pop>
+              </Pressable>
+            )}
           </View>
           <View style={styles.bannerFoot}>
             <View style={styles.bannerCat}>
@@ -265,12 +274,26 @@ export default function VendorProfile() {
           </Section>
 
           <Section title={`${t('vendor.reviews')} (${reviews.length})`}>
-            <Pressable onPress={openReview} style={[styles.writeReview, { borderColor: colors.primaryBorder, backgroundColor: colors.primarySoft }]}>
-              <MaterialCommunityIcons name="star-plus" size={20} color={colors.primary} />
-              <AppText variant="calloutStrong" color={colors.primary}>
-                {t('review.write')}
-              </AppText>
-            </Pressable>
+            {isOwnListing ? (
+              <View style={[styles.ownNote, { borderColor: colors.primaryBorder, backgroundColor: colors.primarySoft }]}>
+                <MaterialCommunityIcons name="store" size={20} color={colors.primary} />
+                <View style={{ flex: 1 }}>
+                  <AppText variant="calloutStrong" color={colors.primary}>
+                    {t('vendor.ownTitle')}
+                  </AppText>
+                  <AppText variant="caption" color={colors.textSecondary}>
+                    {t('vendor.ownSub')}
+                  </AppText>
+                </View>
+              </View>
+            ) : (
+              <Pressable onPress={openReview} style={[styles.writeReview, { borderColor: colors.primaryBorder, backgroundColor: colors.primarySoft }]}>
+                <MaterialCommunityIcons name="star-plus" size={20} color={colors.primary} />
+                <AppText variant="calloutStrong" color={colors.primary}>
+                  {t('review.write')}
+                </AppText>
+              </Pressable>
+            )}
             {reviews.length === 0 ? (
               <AppText variant="callout" color={colors.textSecondary}>
                 {t('vendor.newNote')}
@@ -295,21 +318,32 @@ export default function VendorProfile() {
       </ScrollView>
 
       <View style={[styles.ctaBar, { backgroundColor: colors.surface, paddingBottom: insets.bottom + 10 }]}>
-        <Pressable style={[styles.ctaBtn, styles.callBtn, { borderColor: colors.primary }]} onPress={() => onCall(vendor)}>
-          <MaterialCommunityIcons name="phone" size={20} color={colors.primary} />
-          <AppText variant="button" color={colors.primary}>
-            {t('vendor.call')}
-          </AppText>
-        </Pressable>
-        <Pressable style={[styles.ctaBtn, styles.callBtn, { borderColor: colors.border }]} onPress={() => void onChat(vendor)}>
-          <MaterialCommunityIcons name="chat" size={20} color={colors.text} />
-          <AppText variant="button">{t('vendor.chat')}</AppText>
-        </Pressable>
-        <Pressable style={[styles.ctaBtn, { backgroundColor: colors.primary, flex: 1.4 }]} onPress={() => onRequest(vendor)}>
-          <AppText variant="button" color="#fff">
-            {t('common.requestService')}
-          </AppText>
-        </Pressable>
+        {isOwnListing ? (
+          <Pressable style={[styles.ctaBtn, { backgroundColor: colors.primary, flex: 1 }]} onPress={() => router.push('/vendor-dashboard')}>
+            <MaterialCommunityIcons name="view-dashboard" size={20} color="#fff" />
+            <AppText variant="button" color="#fff">
+              {t('profile.dashboard')}
+            </AppText>
+          </Pressable>
+        ) : (
+          <>
+            <Pressable style={[styles.ctaBtn, styles.callBtn, { borderColor: colors.primary }]} onPress={() => onCall(vendor)}>
+              <MaterialCommunityIcons name="phone" size={20} color={colors.primary} />
+              <AppText variant="button" color={colors.primary}>
+                {t('vendor.call')}
+              </AppText>
+            </Pressable>
+            <Pressable style={[styles.ctaBtn, styles.callBtn, { borderColor: colors.border }]} onPress={() => void onChat(vendor)}>
+              <MaterialCommunityIcons name="chat" size={20} color={colors.text} />
+              <AppText variant="button">{t('vendor.chat')}</AppText>
+            </Pressable>
+            <Pressable style={[styles.ctaBtn, { backgroundColor: colors.primary, flex: 1.4 }]} onPress={() => onRequest(vendor)}>
+              <AppText variant="button" color="#fff">
+                {t('common.requestService')}
+              </AppText>
+            </Pressable>
+          </>
+        )}
       </View>
       <CallConfirmSheet vendor={callVendor} visible={!!callVendor} onClose={() => setCallVendor(null)} />
       {/* Scoped review sheet: single keyboard lift, no keyboard-aware
@@ -411,6 +445,10 @@ const styles = StyleSheet.create({
   writeReview: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     borderWidth: 1.5, borderRadius: 14, paddingVertical: 13, marginBottom: 12,
+  },
+  ownNote: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    borderWidth: 1.5, borderRadius: 14, padding: 14, marginBottom: 12,
   },
   ctaBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', gap: 10,

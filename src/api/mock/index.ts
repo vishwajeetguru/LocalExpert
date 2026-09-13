@@ -375,7 +375,11 @@ export const mockRequestsRepo: RequestRepository = {
 export const mockChat: ChatRepository = {
   async conversationsFor(userId) {
     await delay(300);
-    return conversations.filter((c) => c.customerId === userId || c.vendorId === userId);
+    // Vendor accounts log in with their ACCOUNT id, but threads store the
+    // vendor LISTING id — resolve owned listings first or vendors get an
+    // empty inbox despite having conversations.
+    const vendorIds = liveVendors.filter((v) => v.ownerId === userId).map((v) => v.id);
+    return conversations.filter((c) => c.customerId === userId || vendorIds.includes(c.vendorId));
   },
   async messages(conversationId) {
     await delay(300);

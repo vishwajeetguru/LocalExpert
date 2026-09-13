@@ -182,18 +182,20 @@ export default function VendorDashboard() {
           <View style={{ gap: 10 }}>
             {requests.map((r) => (
               <View key={r.id} style={[styles.req, { backgroundColor: colors.card }]}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <StatusPill tone={r.status === 'completed' ? 'success' : r.status === 'pending' ? 'warning' : r.status === 'cancelled' ? 'error' : 'info'} label={statusLabel(t, r.status)} icon="pulse" />
-                  <AppText variant="caption" color={colors.textSecondary}>
-                    {r.preferredDate} • {r.preferredTime}
+                <Pressable onPress={() => router.push(`/request/${r.id}`)}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <StatusPill tone={r.status === 'completed' ? 'success' : r.status === 'pending' ? 'warning' : r.status === 'cancelled' ? 'error' : 'info'} label={statusLabel(t, r.status)} icon="pulse" />
+                    <AppText variant="caption" color={colors.textSecondary}>
+                      {r.preferredDate} • {r.preferredTime}
+                    </AppText>
+                  </View>
+                  <AppText variant="bodyStrong" style={{ marginTop: 8 }}>
+                    {r.serviceSummary}
                   </AppText>
-                </View>
-                <AppText variant="bodyStrong" style={{ marginTop: 8 }}>
-                  {r.serviceSummary}
-                </AppText>
-                <AppText variant="caption" color={colors.textSecondary}>
-                  {r.customerName} • {r.phone} • {r.address}
-                </AppText>
+                  <AppText variant="caption" color={colors.textSecondary}>
+                    {r.customerName} • {r.phone} • {r.address}
+                  </AppText>
+                </Pressable>
                 {r.status === 'pending' ? (
                   <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
                     <View style={{ flex: 1 }}>

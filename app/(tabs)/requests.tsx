@@ -120,14 +120,16 @@ export default function RequestsTab() {
               lottie={{ source: Animations.emptyInbox, fallbackIcon: 'clipboard-plus' }}
               title={t('req.emptyTitle')}
               body={t('req.emptyBody')}
-              actionLabel={t('req.findBtn')}
-              onAction={() => router.push('/(tabs)')}
+              actionLabel={user?.role === 'vendor' ? t('profile.dashboard') : t('req.findBtn')}
+              onAction={() => (user?.role === 'vendor' ? router.push('/vendor-dashboard') : router.push('/(tabs)'))}
             />
           )
         }
         renderItem={({ item }) => {
           const tone = toneFor(item.status);
           const edge = tone === 'success' ? colors.success : tone === 'error' ? colors.error : tone === 'warning' ? colors.warning : colors.primary;
+          // Vendors see WHO requested (customer + slot); customers see WHAT/WHO they booked.
+          const isVendorView = user?.role === 'vendor';
           return (
             <Pressable onPress={() => router.push(`/request/${item.id}`)} style={[styles.card, { backgroundColor: colors.card, borderLeftColor: edge }]}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -140,7 +142,7 @@ export default function RequestsTab() {
                 {item.serviceSummary}
               </AppText>
               <AppText variant="caption" color={colors.textSecondary} numberOfLines={1}>
-                {item.vendorName} • {item.categoryName}
+                {isVendorView ? `${item.customerName} • ${item.phone}` : `${item.vendorName} • ${item.categoryName}`}
               </AppText>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 }}>
                 <MaterialCommunityIcons name="map-marker" size={15} color={colors.textSecondary} />

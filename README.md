@@ -28,7 +28,8 @@ Demo city: **Shegaon, Maharashtra** with fictional vendors/phones.
 
 - **Login is identical for customers and vendors** (email + password); only the signup paths differ.
 - Vendor signup collects the account (name, email, phone), then continues into the business wizard: category → business details → contact & location → review → success.
-- Account phone is prefilled into the wizard's contact step.
+- Logged-in customers can upgrade anytime via the same partner card in Profile (routes straight into the wizard, phone prefilled).
+- Request detail is role-aware: vendors get a **Manage** view (customer card, Call/Chat customer, Accept → Start → Complete); customers get tracking + cancellation. Lists and chat headers always name the *other* party, and vendors can never act on their own listing.
 
 ## Project layout
 

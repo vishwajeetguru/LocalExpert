@@ -8,7 +8,7 @@ import { layout, radius, shadows, spacing } from '../../../src/theme/tokens';
 import { RequestService, VendorService } from '../../../src/services';
 import { Vendor } from '../../../src/types/models';
 import { useAuthStore } from '../../../src/stores/useAuthStore';
-import { useToastStore } from '../../../src/stores/useUiStore';
+import { useGateStore, useToastStore } from '../../../src/stores/useUiStore';
 import { useT } from '../../../src/i18n/store';
 import { AppText } from '../../../src/components/ui/AppText';
 import { Avatar } from '../../../src/components/ui/bits';
@@ -26,6 +26,7 @@ export default function NewRequest() {
   const { t, catName } = useT();
   const { id } = useLocalSearchParams<{ id: string }>();
   const user = useAuthStore((s) => s.user);
+  const openAuthGate = useGateStore((s) => s.openAuthGate);
   const showToast = useToastStore((s) => s.show);
   const [vendor, setVendor] = useState<Vendor | null>(null);
   const [summary, setSummary] = useState('');
@@ -54,7 +55,11 @@ export default function NewRequest() {
     if (!address.trim()) e.address = t('newReq.eAddr');
     if (!phoneOk(phone)) e.phone = t('newReq.ePhone');
     setErrors(e);
-    if (Object.keys(e).length > 0 || !vendor || !user) return;
+    if (Object.keys(e).length > 0 || !vendor) return;
+    if (!user) {
+      openAuthGate(t('newReq.note'), t('newReq.send'));
+      return;
+    }
     setSending(true);
     try {
       const req = await RequestService.create({

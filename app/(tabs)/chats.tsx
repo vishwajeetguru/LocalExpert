@@ -98,30 +98,30 @@ export default function ChatsTab() {
               <EmptyState icon="chat-outline" lottie={{ source: Animations.emptyChat, fallbackIcon: 'chat-outline' }} title={t('chats.emptyTitle')} body={t('chats.emptyBody')} />
             )
           }
-          renderItem={({ item }) => (
-            <Pressable onPress={() => router.push(`/chat/${item.id}`)} style={[styles.row, { backgroundColor: colors.card, borderColor: colors.borderSoft }]}>
-              <Avatar name={item.vendorName} size={52} />
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <AppText variant="bodyStrong" numberOfLines={1} style={{ flex: 1 }}>
-                    {item.vendorName}
-                  </AppText>
-                  <AppText variant="tiny" color={colors.textTertiary}>
-                    {timeAgo(item.lastAt)}
-                  </AppText>
-                </View>
-                <AppText variant="callout" color={colors.textSecondary} numberOfLines={1} style={{ marginTop: 2 }}>
-                  {item.lastMessage || 'Say namaste to start…'}
+        renderItem={({ item }) => (
+          <Pressable onPress={() => router.push(`/chat/${item.id}`)} style={[styles.row, { backgroundColor: colors.card, borderColor: colors.borderSoft }]}>
+            <Avatar name={user?.role === 'vendor' ? item.customerName : item.vendorName} size={52} />
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <AppText variant="bodyStrong" numberOfLines={1} style={{ flex: 1 }}>
+                  {user?.role === 'vendor' ? item.customerName : item.vendorName}
                 </AppText>
-                {item.vendorCategory ? (
-                  <AppText variant="tiny" color={colors.primary} style={{ marginTop: 2 }}>
-                    {item.vendorCategory}
-                  </AppText>
-                ) : null}
+                <AppText variant="tiny" color={colors.textTertiary}>
+                  {timeAgo(item.lastAt)}
+                </AppText>
               </View>
-              {item.unreadCount > 0 ? <View style={styles.unread}><AppText variant="tiny" color="#fff">{String(item.unreadCount)}</AppText></View> : null}
-            </Pressable>
-          )}
+              <AppText variant="callout" color={colors.textSecondary} numberOfLines={1} style={{ marginTop: 2 }}>
+                {item.lastMessage || 'Say namaste to start…'}
+              </AppText>
+              {user?.role !== 'vendor' && item.vendorCategory ? (
+                <AppText variant="tiny" color={colors.primary} style={{ marginTop: 2 }}>
+                  {item.vendorCategory}
+                </AppText>
+              ) : null}
+            </View>
+            {item.unreadCount > 0 ? <View style={styles.unread}><AppText variant="tiny" color="#fff">{String(item.unreadCount)}</AppText></View> : null}
+          </Pressable>
+        )}
         />
       )}
     </View>

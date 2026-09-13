@@ -97,25 +97,7 @@ export default function ProfileTab() {
                 card so vendors instantly see a different action from the
                 customer login above. Routes to vendor SIGNUP (account +
                 business wizard), never the login screen. */}
-            <Pressable
-              onPress={() => router.push('/vendor-onboard/signup')}
-              style={[styles.vendorCta, { backgroundColor: colors.primary }, shadows.glow]}
-            >
-              <View style={styles.vendorIc}>
-                <MaterialCommunityIcons name="store-plus" size={26} color="#fff" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <AppText variant="bodyStrong" color="#fff">
-                  {t('profile.joinTitle')}
-                </AppText>
-                <AppText variant="callout" color="rgba(255,255,255,0.85)" style={{ marginTop: 2 }}>
-                  {t('profile.joinSub')}
-                </AppText>
-              </View>
-              <View style={styles.vendorGo}>
-                <MaterialCommunityIcons name="arrow-right" size={20} color={colors.primary} />
-              </View>
-            </Pressable>
+            <VendorCtaCard onPress={() => router.push('/vendor-onboard/signup')} />
             <MenuRow icon="translate" tint="#F3E8FF" iconColor="#7C3AED" label={t('profile.language')} sub={langLabel} onPress={() => router.push('/language')} />
           </View>
         </View>
@@ -197,11 +179,15 @@ export default function ProfileTab() {
           )}
           <MenuRow icon="clipboard-text" tint="#FFF4E5" iconColor="#D97706" label={t('profile.requests')} sub={t('profile.requestsSub')} onPress={() => router.push('/(tabs)/requests')} />
           <MenuRow icon="chat" tint="#E8F1FE" iconColor="#2563EB" label={t('profile.chats')} sub={t('profile.chatsSub')} onPress={() => router.push('/(tabs)/chats')} />
-          {/* Vendor entry points live ONLY on the logged-out profile — a user
-              logged in as a customer cannot join as a vendor from here. */}
+          {/* Vendor entry points: vendors manage work from the dashboard;
+              logged-in customers can still upgrade via the partner card,
+              which routes straight into the business wizard (account
+              already exists — no second signup). */}
           {isVendor ? (
             <MenuRow icon="view-dashboard" tint="#E9F6EE" iconColor="#16A34A" label={t('profile.dashboard')} sub={t('profile.dashSub')} onPress={() => router.push('/vendor-dashboard')} />
-          ) : null}
+          ) : (
+            <VendorCtaCard onPress={() => router.push('/vendor-onboard')} />
+          )}
           <MenuRow icon="translate" tint="#F3E8FF" iconColor="#7C3AED" label={t('profile.language')} sub={langLabel} onPress={() => router.push('/language')} />
           <MenuRow icon="logout" tint="#FDECEC" iconColor={colors.error} label={t('profile.logout')} sub={user.email} danger onPress={() => setConfirmLogout(true)} />
         </View>
@@ -232,6 +218,32 @@ export default function ProfileTab() {
         }}
       />
     </View>
+  );
+}
+
+/** Solid partner card — visually distinct from MenuRows so the vendor
+    entry never reads as just another row. Shared by guest + logged-in
+    upgrade paths; only the destination differs (signup vs wizard). */
+function VendorCtaCard({ onPress }: { onPress: () => void }) {
+  const { colors } = useAppColors();
+  const { t } = useT();
+  return (
+    <Pressable onPress={onPress} style={[styles.vendorCta, { backgroundColor: colors.primary }, shadows.glow]}>
+      <View style={styles.vendorIc}>
+        <MaterialCommunityIcons name="store-plus" size={26} color="#fff" />
+      </View>
+      <View style={{ flex: 1 }}>
+        <AppText variant="bodyStrong" color="#fff">
+          {t('profile.joinTitle')}
+        </AppText>
+        <AppText variant="callout" color="rgba(255,255,255,0.85)" style={{ marginTop: 2 }}>
+          {t('profile.joinSub')}
+        </AppText>
+      </View>
+      <View style={styles.vendorGo}>
+        <MaterialCommunityIcons name="arrow-right" size={20} color={colors.primary} />
+      </View>
+    </Pressable>
   );
 }
 

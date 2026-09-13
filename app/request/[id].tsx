@@ -8,15 +8,18 @@ import { layout, radius, shadows, spacing } from '../../src/theme/tokens';
 import { RequestService, ChatService, VendorService } from '../../src/services';
 import { ServiceRequest, Vendor } from '../../src/types/models';
 import { useAuthStore } from '../../src/stores/useAuthStore';
-import { useToastStore } from '../../src/stores/useUiStore';
+import { useGateStore, useToastStore } from '../../src/stores/useUiStore';
 import { useT } from '../../src/i18n/store';
 import { statusLabel } from '../../src/i18n/status';
 import { AppText } from '../../src/components/ui/AppText';
+import { Avatar } from '../../src/components/ui/bits';
 import { StatusPill } from '../../src/components/ui/Pills';
 import { Button } from '../../src/components/ui/Button';
+import { ConfirmDialog } from '../../src/components/feedback/ConfirmDialog';
 import { EmptyState } from '../../src/components/ui/EmptyState';
 import { LottieMoment } from '../../src/components/motion/LottieMoment';
 import { Animations } from '../../src/components/motion/animations';
+import { callPhoneNumber } from '../../src/utils/device';
 
 const STEPS: ServiceRequest['status'][] = ['pending', 'accepted', 'in_progress', 'completed'];
 
@@ -26,11 +29,18 @@ export default function RequestDetail() {
   const { t } = useT();
   const { id } = useLocalSearchParams<{ id: string }>();
   const user = useAuthStore((s) => s.user);
+  const openAuthGate = useGateStore((s) => s.openAuthGate);
   const showToast = useToastStore((s) => s.show);
   const [req, setReq] = useState<ServiceRequest | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [chatting, setChatting] = useState(false);
+  const [acting, setActing] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+
+  // Vendors manage the job here (accept → start → complete); customers
+  // track progress. The two roles see deliberately different screens.
+  const isVendorView = !!user && user.role === 'vendor';
 
   useEffect(() => {
     (async () => {
@@ -59,7 +69,10 @@ export default function RequestDetail() {
 
   /** Open the real thread for this request — vendor ↔ customer, persisted server-side. */
   const openChat = async () => {
-    if (!user) return;
+    if (!user) {
+      openAuthGate(t('sheet.authBody'), t('reqDetail.chatBtn'));
+      return;
+    }
     setChatting(true);
     try {
       if (user.role === 'vendor') {
@@ -79,6 +92,21 @@ export default function RequestDetail() {
     }
   };
 
+  /** Vendor status transitions + customer cancellation, reflected instantly. */
+  const act = async (status: ServiceRequest['status']) => {
+    setActing(true);
+    try {
+      setReq(await RequestService.updateStatus(req.id, status));
+      showToast(status === 'cancelled' ? t('reqDetail.cancelDone') : t('dash.updated'));
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : t('verify.wrong'), 'error');
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const cancelled = req.status === 'cancelled';
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background, paddingTop: insets.top + 8 }]}>
       <View style={styles.head}>
@@ -91,7 +119,7 @@ export default function RequestDetail() {
       <ScrollView contentContainerStyle={{ padding: layout.screenPad, gap: 12 }}>
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <StatusPill tone={req.status === 'completed' ? 'success' : req.status === 'cancelled' ? 'error' : req.status === 'pending' ? 'warning' : 'info'} label={statusLabel(t, req.status)} icon="pulse" />
+            <StatusPill tone={req.status === 'completed' ? 'success' : cancelled ? 'error' : req.status === 'pending' ? 'warning' : 'info'} label={statusLabel(t, req.status)} icon="pulse" />
             <AppText variant="caption" color={colors.textSecondary}>
               #{req.id.slice(-6).toUpperCase()}
             </AppText>
@@ -104,15 +132,46 @@ export default function RequestDetail() {
           </AppText>
         </View>
 
+        {isVendorView ? (
+          <View style={[styles.card, { backgroundColor: colors.card }]}>
+            <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+              <Avatar name={req.customerName} size={52} />
+              <View style={{ flex: 1 }}>
+                <AppText variant="tiny" color={colors.textSecondary}>
+                  {t('reqDetail.customer').toUpperCase()}
+                </AppText>
+                <AppText variant="bodyStrong" style={{ marginTop: 2 }}>
+                  {req.customerName}
+                </AppText>
+                <AppText variant="callout" color={colors.textSecondary}>
+                  {req.preferredDate} • {req.preferredTime}
+                </AppText>
+              </View>
+            </View>
+            <Row icon="phone" label={t('reqDetail.phone')} value={req.phone} />
+            <Row icon="map-marker" label={t('reqDetail.address')} value={req.address} />
+            {!cancelled ? (
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Button label={t('reqDetail.callBtn')} variant="outline" icon="phone" fullWidth onPress={() => void callPhoneNumber(req.phone)} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Button label={t('reqDetail.chatCustomer')} variant="secondary" icon="chat" fullWidth loading={chatting} onPress={() => void openChat()} />
+                </View>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
         {req.status === 'completed' ? (
           <View style={{ alignItems: 'center', marginBottom: 2 }}>
             <LottieMoment source={Animations.successCheck} size={110} loop={false} fallbackIcon="check-decagram" />
           </View>
         ) : null}
-        {req.status !== 'cancelled' ? (
+        {!cancelled ? (
           <View style={[styles.card, { backgroundColor: colors.card }]}>
             <AppText variant="calloutStrong" style={{ marginBottom: 10 }}>
-              {t('reqDetail.track')}
+              {isVendorView ? t('reqDetail.manage') : t('reqDetail.track')}
             </AppText>
             <View style={{ gap: 0 }}>
               {STEPS.map((s, i) => {
@@ -142,6 +201,31 @@ export default function RequestDetail() {
                 );
               })}
             </View>
+            {isVendorView && req.status === 'pending' ? (
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+                <View style={{ flex: 1 }}>
+                  <Button label={t('dash.accept')} fullWidth loading={acting} onPress={() => void act('accepted')} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Button label={t('dash.decline')} variant="outline" fullWidth loading={acting} onPress={() => void act('cancelled')} />
+                </View>
+              </View>
+            ) : null}
+            {isVendorView && req.status === 'accepted' ? (
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+                <View style={{ flex: 1 }}>
+                  <Button label={t('dash.start')} variant="secondary" fullWidth loading={acting} onPress={() => void act('in_progress')} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Button label={t('dash.complete')} fullWidth loading={acting} onPress={() => void act('completed')} />
+                </View>
+              </View>
+            ) : null}
+            {isVendorView && req.status === 'in_progress' ? (
+              <View style={{ marginTop: 4 }}>
+                <Button label={t('dash.doneBtn')} fullWidth loading={acting} onPress={() => void act('completed')} />
+              </View>
+            ) : null}
           </View>
         ) : (
           <View style={[styles.card, { backgroundColor: colors.errorBg }]}>
@@ -151,15 +235,33 @@ export default function RequestDetail() {
           </View>
         )}
 
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <Row icon="store" label={t('reqDetail.vendor')} value={`${req.vendorName} • ${req.categoryName}`} />
-          <Row icon="calendar" label={t('reqDetail.slot')} value={`${req.preferredDate} • ${req.preferredTime}`} />
-          <Row icon="map-marker" label={t('reqDetail.address')} value={req.address} />
-          <Row icon="phone" label={t('reqDetail.phone')} value={req.phone} />
-        </View>
+        {isVendorView ? null : (
+          <View style={[styles.card, { backgroundColor: colors.card }]}>
+            <Row icon="store" label={t('reqDetail.vendor')} value={`${req.vendorName} • ${req.categoryName}`} />
+            <Row icon="calendar" label={t('reqDetail.slot')} value={`${req.preferredDate} • ${req.preferredTime}`} />
+            <Row icon="map-marker" label={t('reqDetail.address')} value={req.address} />
+            <Row icon="phone" label={t('reqDetail.phone')} value={req.phone} />
+          </View>
+        )}
 
-        <Button label={t('reqDetail.chatBtn')} variant="secondary" icon="chat" fullWidth loading={chatting} onPress={() => void openChat()} />
+        {isVendorView ? null : (
+          <>
+            <Button label={t('reqDetail.chatBtn')} variant="secondary" icon="chat" fullWidth loading={chatting} onPress={() => void openChat()} />
+            {req.status === 'pending' ? (
+              <Button label={t('reqDetail.cancelBtn')} variant="outline" fullWidth onPress={() => setConfirmCancel(true)} />
+            ) : null}
+          </>
+        )}
       </ScrollView>
+      <ConfirmDialog
+        visible={confirmCancel}
+        title={t('reqDetail.cancelTitle')}
+        body={t('reqDetail.cancelBody')}
+        confirmLabel={t('reqDetail.cancelBtn')}
+        destructive
+        onClose={() => setConfirmCancel(false)}
+        onConfirm={() => void act('cancelled')}
+      />
     </View>
   );
 }

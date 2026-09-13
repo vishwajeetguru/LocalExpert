@@ -25,6 +25,9 @@ export default function ChatDetail() {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const listRef = useRef<FlatList>(null);
+  // Header shows the OTHER party: customers see the vendor, vendors see
+  // the customer (previously hardcoded "Vendor Chat" for both roles).
+  const [peerName, setPeerName] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -35,6 +38,19 @@ export default function ChatDetail() {
       }
     })();
   }, [id]);
+
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      try {
+        const convs = await ChatService.conversationsFor(user.id, user.role);
+        const c = convs.find((x) => x.id === String(id));
+        if (c) setPeerName(user.role === 'vendor' ? c.customerName : c.vendorName);
+      } catch {
+        // header falls back to the generic title
+      }
+    })();
+  }, [id, user]);
 
   // Live thread: poll for replies while the conversation is open (live API only).
   useEffect(() => {
@@ -82,12 +98,18 @@ export default function ChatDetail() {
         <Pressable onPress={() => router.back()} hitSlop={12} style={{ padding: 6 }}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={colors.text} />
         </Pressable>
-        <Avatar name="Vendor Chat" size={40} />
+        <Avatar name={peerName ?? 'Vendor Chat'} size={40} />
         <View style={{ flex: 1 }}>
-          <AppText variant="bodyStrong">{t('chats.title')}</AppText>
-          <AppText variant="caption" color={colors.success}>
-            ● {t('chats.onlineNote')}
-          </AppText>
+          <AppText variant="bodyStrong">{peerName ?? t('chats.title')}</AppText>
+          {user?.role === 'vendor' ? (
+            <AppText variant="caption" color={colors.textSecondary}>
+              {t('profile.customer')}
+            </AppText>
+          ) : (
+            <AppText variant="caption" color={colors.success}>
+              ● {t('chats.onlineNote')}
+            </AppText>
+          )}
         </View>
         <Pressable hitSlop={12} style={{ padding: 6 }}>
           <MaterialCommunityIcons name="phone" size={22} color={colors.primary} />
