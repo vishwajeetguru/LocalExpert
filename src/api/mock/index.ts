@@ -57,6 +57,8 @@ const requireVerified = () => {
 };
 
 let otpCodes: Record<string, string> = {};
+/** Mock-mode password store (in-memory only, mirrors the password_hash column). */
+let mockPasswords: Record<string, string> = {};
 
 const mockCode = (email: string) => {
   const code = String(Math.floor(100000 + Math.random() * 900000));
@@ -68,13 +70,13 @@ export const mockAuth: AuthRepository = {
   async loginWithEmail(email) {
     await delay(600);
     const name = email.split('@')[0].replace(/[._-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-    sessionUser = { ...mockCustomer, email: email.toLowerCase(), name: name || 'Guest User', emailVerified: false };
+    sessionUser = { ...mockCustomer, email: email.toLowerCase(), name: name || 'Guest User', emailVerified: false, hasPassword: !!mockPasswords[email.toLowerCase()] };
     const demoCode = mockCode(email);
     return { user: sessionUser, needsVerification: true, demoCode };
   },
   async register(name, email, phone) {
     await delay(600);
-    sessionUser = { ...mockCustomer, id: `u-${Date.now()}`, name, email: email.toLowerCase(), phone, emailVerified: false };
+    sessionUser = { ...mockCustomer, id: `u-${Date.now()}`, name, email: email.toLowerCase(), phone, emailVerified: false, hasPassword: false };
     const demoCode = mockCode(email);
     return { user: sessionUser, needsVerification: true, demoCode };
   },
@@ -90,9 +92,54 @@ export const mockAuth: AuthRepository = {
     }
     delete otpCodes[email.toLowerCase()];
     if (!sessionUser) {
-      sessionUser = { ...mockCustomer, email: email.toLowerCase(), emailVerified: true };
+      sessionUser = { ...mockCustomer, email: email.toLowerCase(), emailVerified: true, hasPassword: !!mockPasswords[email.toLowerCase()] };
     } else {
       sessionUser = { ...sessionUser, emailVerified: true };
+    }
+    return { user: sessionUser, needsVerification: false };
+  },
+  async loginWithPassword(email, password) {
+    await delay(600);
+    const key = email.toLowerCase();
+    const want = mockPasswords[key];
+    if (!want) {
+      throw new Error('No password set for this email yet. Verify your email to set one.');
+    }
+    if (want !== password) {
+      throw new Error('Wrong email or password.');
+    }
+    if (!sessionUser || sessionUser.email !== key) {
+      sessionUser = { ...mockCustomer, email: key, emailVerified: true, hasPassword: true };
+    } else {
+      sessionUser = { ...sessionUser, emailVerified: true, hasPassword: true };
+    }
+    return { user: sessionUser, needsVerification: false };
+  },
+  async setPassword(password) {
+    await delay(400);
+    if (!sessionUser) throw new Error('Not logged in');
+    if (password.length < 6) throw new Error('Password must be 6–72 characters.');
+    mockPasswords[sessionUser.email.toLowerCase()] = password;
+    sessionUser = { ...sessionUser, hasPassword: true };
+    return sessionUser;
+  },
+  async requestPasswordReset(email) {
+    await delay(500);
+    return { sent: true, demoCode: mockCode(email) };
+  },
+  async confirmPasswordReset(email, code, newPassword) {
+    await delay(600);
+    const want = otpCodes[email.toLowerCase()];
+    if (!want || want !== code.trim()) {
+      throw new Error('Wrong code. Check and try again.');
+    }
+    if (newPassword.length < 6) throw new Error('Password must be 6–72 characters.');
+    delete otpCodes[email.toLowerCase()];
+    mockPasswords[email.toLowerCase()] = newPassword;
+    if (!sessionUser) {
+      sessionUser = { ...mockCustomer, email: email.toLowerCase(), emailVerified: true, hasPassword: true };
+    } else {
+      sessionUser = { ...sessionUser, emailVerified: true, hasPassword: true };
     }
     return { user: sessionUser, needsVerification: false };
   },
@@ -112,6 +159,12 @@ export const mockAuth: AuthRepository = {
   async logout() {
     await delay(200);
     sessionUser = null;
+  },
+  async updatePushToken() {
+    await delay(150);
+    // Mock has no push gateway — token is accepted and echoed on the user.
+    if (!sessionUser) throw new Error('Not logged in');
+    return sessionUser;
   },
   async currentUser() {
     await delay(150);
@@ -171,7 +224,9 @@ export const mockVendorsRepo: VendorRepository = {
           v.location.area?.toLowerCase().includes(q),
       );
     }
-    items = [...items].sort((a, b) => b.rating - a.rating);
+    items = params?.sort === 'near'
+      ? [...items].sort((a, b) => (a.distanceKm ?? 999) - (b.distanceKm ?? 999))
+      : [...items].sort((a, b) => b.rating - a.rating);
     const page = params?.page ?? 0;
     const size = PAGE();
     const slice = items.slice(page * size, page * size + size);
@@ -192,13 +247,32 @@ export const mockVendorsRepo: VendorRepository = {
     const categories = withCounts(categoryList).filter(
       (c: Category) => c.name.toLowerCase().includes(q) || c.keywords.some((k: string) => k.includes(q)),
     ).slice(0, 12);
+    // Relevance-ranked like the live API: exact > prefix > contains.
+    const words = q.split(/\s+/).filter((w) => w.length >= 2).slice(0, 4);
+    const keys = words.length > 0 ? words : [q];
+    const score = (v: Vendor) => {
+      const name = v.businessName.toLowerCase();
+      const cat = v.categoryName.toLowerCase();
+      const svc = [...v.servicesOffered, v.location.area ?? ''].join(' ').toLowerCase();
+      let best = 99;
+      for (const w of keys) {
+        if (name === w || name === q) best = Math.min(best, 0);
+        else if (name.startsWith(w)) best = Math.min(best, 1);
+        else if (name.includes(w)) best = Math.min(best, 2);
+        else if (cat.includes(w)) best = Math.min(best, 3);
+        else if (svc.includes(w)) best = Math.min(best, 4);
+      }
+      return best;
+    };
     const vendors = publicVendors()
       .filter(
         (v) =>
           v.businessName.toLowerCase().includes(q) ||
           v.categoryName.toLowerCase().includes(q) ||
-          v.servicesOffered.some((s) => s.toLowerCase().includes(q)),
+          v.servicesOffered.some((s) => s.toLowerCase().includes(q)) ||
+          keys.some((w) => v.businessName.toLowerCase().includes(w) || v.categoryName.toLowerCase().includes(w)),
       )
+      .sort((a, b) => score(a) - score(b) || b.rating - a.rating)
       .slice(0, 20);
     return { categories, vendors };
   },
@@ -407,4 +481,5 @@ export function __resetMocksForTests() {
   liveVendors = withMockGeo([...mockVendors]);
   liveReviews = [...mockReviews];
   otpCodes = {};
+  mockPasswords = {};
 }

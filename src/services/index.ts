@@ -9,8 +9,13 @@ export const AuthService = {
   register: (name: string, email: string, phone?: string) => api.auth.register(name, email, phone),
   requestOtp: (email: string) => api.auth.requestOtp(email),
   verifyOtp: (email: string, code: string) => api.auth.verifyOtp(email, code),
+  loginWithPassword: (email: string, password: string) => api.auth.loginWithPassword(email, password),
+  setPassword: (password: string) => api.auth.setPassword(password),
+  requestPasswordReset: (email: string) => api.auth.requestPasswordReset(email),
+  confirmPasswordReset: (email: string, code: string, newPassword: string) => api.auth.confirmPasswordReset(email, code, newPassword),
   refreshSession: () => api.auth.refreshSession(),
   changeEmail: (newEmail: string) => api.auth.changeEmail(newEmail),
+  updatePushToken: (token: string) => api.auth.updatePushToken(token),
   logout: () => api.auth.logout(),
   currentUser: () => api.auth.currentUser(),
   updateProfile: (patch: Partial<User>) => api.auth.updateProfile(patch),
@@ -22,10 +27,10 @@ export const CategoryService = {
 };
 
 export const VendorService = {
-  list: (p?: { categoryId?: ID; query?: string; page?: number }) => api.vendors.list({ ...p, verifiedOnly: true }),
+  list: (p?: { categoryId?: ID; query?: string; page?: number; lat?: number; lng?: number; sort?: 'rating' | 'near' }) => api.vendors.list({ ...p }),
   getById: (id: ID) => api.vendors.getById(id),
   byCategory: (categoryId: ID, page?: number) => api.vendors.byCategory(categoryId, page),
-  search: (q: string) => api.vendors.search(q),
+  search: (q: string, geo?: { lat: number; lng: number }) => api.vendors.search(q, geo),
   createDraft: (input: VendorDraftInput) => api.vendors.createDraft(input),
   updateVendor: (id: ID, patch: Partial<Vendor>) => api.vendors.updateVendor(id, patch),
   myVendor: (ownerId: ID) => api.vendors.myVendor(ownerId),

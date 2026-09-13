@@ -1,7 +1,8 @@
 /**
  * WordPress REST implementation of the ApiBundle contracts.
  * Talks ONLY to the SevaSathi plugin namespace — never to the WP database.
- * Auth: X-Seva-Token header issued by /auth/login|register, kept in SecureStore.
+ * App auth: X-Seva-App-Key header (EXPO_PUBLIC_API_KEY) on every request.
+ * User auth: X-Seva-Token header issued by /auth/login|register, kept in SecureStore.
  */
 import {
   ApiBundle,
@@ -52,6 +53,11 @@ function tunnelHeader(): Record<string, string> {
   return {};
 }
 
+/** Plugin app key — required on EVERY sevasathi/v1 request (see WP → SevaSathi → Settings). */
+function appKeyHeader(): Record<string, string> {
+  return config.apiKey ? { 'X-Seva-App-Key': config.apiKey } : {};
+}
+
 class ApiError extends Error {
   status: number;
   constructor(message: string, status: number) {
@@ -89,6 +95,7 @@ async function req<T>(path: string, init?: RequestInit, retried = false): Promis
         headers: {
           'Content-Type': 'application/json',
           ...tunnelHeader(),
+          ...appKeyHeader(),
           ...(token ? { 'X-Seva-Token': token } : {}),
           ...(init?.headers ?? {}),
         },
@@ -99,9 +106,20 @@ async function req<T>(path: string, init?: RequestInit, retried = false): Promis
     throw new ApiError('Cannot reach the SevaSathi server. Check EXPO_PUBLIC_API_URL and that the site is running.', 0);
   }
   // Sliding sessions: one silent refresh + retry on an expired token.
+  // App-key 401s must NEVER trigger a refresh — peek at the error code first.
   if (res.status === 401 && token && !retried && !path.startsWith('/auth/')) {
-    const rotated = await tryRefresh(token);
-    if (rotated) return req<T>(path, init, true);
+    let keyProblem = false;
+    try {
+      const peek = (await res.clone().json()) as { code?: unknown };
+      keyProblem =
+        peek?.code === 'seva_missing_key' || peek?.code === 'seva_invalid_key' || peek?.code === 'seva_no_key';
+    } catch {
+      keyProblem = false;
+    }
+    if (!keyProblem) {
+      const rotated = await tryRefresh(token);
+      if (rotated) return req<T>(path, init, true);
+    }
   }
   let body: unknown = null;
   try {
@@ -110,6 +128,24 @@ async function req<T>(path: string, init?: RequestInit, retried = false): Promis
     body = null;
   }
   if (!res.ok) {
+    const bodyObj = body && typeof body === 'object' ? (body as { message?: unknown; code?: unknown }) : null;
+    const code = typeof bodyObj?.code === 'string' ? bodyObj.code : '';
+    // Fix = copy the key from WP → SevaSathi → Settings into EXPO_PUBLIC_API_KEY and rebuild.
+    if (code === 'seva_missing_key' || code === 'seva_invalid_key' || code === 'seva_no_key') {
+      throw new ApiError(
+        'App key missing or invalid. Copy the key from WordPress → SevaSathi → Settings into EXPO_PUBLIC_API_KEY and rebuild the app.',
+        401,
+      );
+    }
+    if (code === 'seva_rate_limited') {
+      throw new ApiError('Too many requests. Wait a moment and try again.', 429);
+    }
+    if (code === 'rest_not_logged_in') {
+      throw new ApiError(
+        'The site blocks anonymous API access (security plugin). Allowlist /wp-json/sevasathi/* for the app key, then retry.',
+        401,
+      );
+    }
     const msg =
       body && typeof body === 'object' && 'message' in body && typeof (body as { message: unknown }).message === 'string'
         ? (body as { message: string }).message
@@ -142,7 +178,7 @@ async function tryRefresh(oldToken: string): Promise<boolean> {
       `${base()}/auth/refresh`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...tunnelHeader(), 'X-Seva-Token': oldToken },
+        headers: { 'Content-Type': 'application/json', ...tunnelHeader(), ...appKeyHeader(), 'X-Seva-Token': oldToken },
       },
       REQUEST_TIMEOUT_MS,
     );
@@ -163,7 +199,7 @@ async function tryRefresh(oldToken: string): Promise<boolean> {
 
 const arr = <T>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 const str = (v: unknown): string => String(v ?? '');
-const asUser = (u: User): User => ({ ...u, id: str(u.id), vendorId: u.vendorId ? str(u.vendorId) : undefined, savedVendorIds: (u.savedVendorIds ?? []).map(str) });
+const asUser = (u: User): User => ({ ...u, id: str(u.id), vendorId: u.vendorId ? str(u.vendorId) : undefined, savedVendorIds: (u.savedVendorIds ?? []).map(str), hasPassword: !!u.hasPassword });
 const asVendor = (v: Vendor): Vendor => ({ ...v, id: str(v.id), ownerId: v.ownerId ? str(v.ownerId) : undefined });
 const asRequest = (r: ServiceRequest): ServiceRequest => ({ ...r, id: str(r.id), vendorId: str(r.vendorId), customerId: str(r.customerId) });
 const asConversation = (c: Conversation): Conversation => ({ ...c, id: str(c.id), vendorId: str(c.vendorId), customerId: str(c.customerId) });
@@ -172,15 +208,34 @@ const asMessage = (m: Message): Message => ({ ...m, id: str(m.id), conversationI
 const auth: AuthRepository = {
   async loginWithEmail(email, name) {
     const res = await jpost<{ user: User; token: string | null; needsVerification: boolean }>('/auth/login', { email, name });
-    if (res.token) await setToken(res.token);
-    else await setToken(null);
-    return { user: asUser(res.user), needsVerification: !!res.needsVerification };
+    // SECURITY: email alone must NEVER grant a session. Some backends return
+    // a token + needsVerification:false for already-verified emails — accepting
+    // that would let anyone log in as anyone. Always drop the token and force
+    // the OTP step; the session is issued only by /auth/otp/verify.
+    await setToken(null);
+    if (!res.needsVerification) {
+      try {
+        await jpost('/auth/otp/request', { email });
+      } catch {
+        // Verify screen offers resend — a send failure here must not block it.
+      }
+      return { user: asUser(res.user), needsVerification: true };
+    }
+    return { user: asUser(res.user), needsVerification: true };
   },
   async register(name, email, phone) {
     const res = await jpost<{ user: User; token: string | null; needsVerification: boolean }>('/auth/register', { name, email, phone });
-    if (res.token) await setToken(res.token);
-    else await setToken(null);
-    return { user: asUser(res.user), needsVerification: !!res.needsVerification };
+    // Same rule for new accounts — no session until the email OTP is verified.
+    await setToken(null);
+    if (!res.needsVerification) {
+      try {
+        await jpost('/auth/otp/request', { email });
+      } catch {
+        // Verify screen offers resend.
+      }
+      return { user: asUser(res.user), needsVerification: true };
+    }
+    return { user: asUser(res.user), needsVerification: true };
   },
   async requestOtp(email) {
     return jpost<{ sent: boolean; verified?: boolean }>('/auth/otp/request', { email });
@@ -188,6 +243,27 @@ const auth: AuthRepository = {
   async verifyOtp(email, code) {
     const res = await jpost<{ user: User; token: string | null; needsVerification: boolean }>('/auth/otp/verify', { email, code });
     if (res.token) await setToken(res.token);
+    return { user: asUser(res.user), needsVerification: !!res.needsVerification };
+  },
+  async loginWithPassword(email, password) {
+    // Password login issues a real session — the ONLY non-OTP path that may
+    // store a token. Server enforces: verified + password set + rate limits.
+    const res = await jpost<{ user: User; token: string | null; needsVerification: boolean }>('/auth/password/login', { email, password });
+    if (res.token) await setToken(res.token);
+    else await setToken(null);
+    return { user: asUser(res.user), needsVerification: !!res.needsVerification };
+  },
+  async setPassword(password) {
+    const user = await jpost<User>('/auth/password/set', { password });
+    return asUser(user);
+  },
+  async requestPasswordReset(email) {
+    return jpost<{ sent: boolean }>('/auth/password/reset/request', { email });
+  },
+  async confirmPasswordReset(email, code, newPassword) {
+    const res = await jpost<{ user: User; token: string | null; needsVerification: boolean }>('/auth/password/reset/confirm', { email, code, new_password: newPassword });
+    if (res.token) await setToken(res.token);
+    else await setToken(null);
     return { user: asUser(res.user), needsVerification: !!res.needsVerification };
   },
   async refreshSession() {
@@ -219,6 +295,9 @@ const auth: AuthRepository = {
       return null;
     }
   },
+  async updatePushToken(token: string) {
+    return asUser(await jpatch<User>('/users/me', { push_token: token }));
+  },
   async updateProfile(patch) {
     return asUser(await jpatch<User>('/users/me', patch));
   },
@@ -239,6 +318,11 @@ const vendors: VendorRepository = {
     const q = new URLSearchParams();
     if (params?.categoryId) q.set('category_id', params.categoryId);
     if (params?.query) q.set('q', params.query);
+    if (params?.lat != null && params?.lng != null) {
+      q.set('lat', String(params.lat));
+      q.set('lng', String(params.lng));
+    }
+    if (params?.sort) q.set('sort', params.sort);
     q.set('page', String(params?.page ?? 0));
     const page = await req<{ items: Vendor[]; page: number; hasMore: boolean; total: number }>(`/vendors?${q.toString()}`);
     return { ...page, items: arr<Vendor>(page.items).map(asVendor) };
@@ -254,8 +338,13 @@ const vendors: VendorRepository = {
   async byCategory(categoryId, page = 0) {
     return this.list({ categoryId, page });
   },
-  async search(query) {
-    const res = await req<{ categories: Category[]; vendors: Vendor[] }>(`/search?q=${encodeURIComponent(query)}`);
+  async search(query, geo) {
+    const q = new URLSearchParams({ q: query });
+    if (geo) {
+      q.set('lat', String(geo.lat));
+      q.set('lng', String(geo.lng));
+    }
+    const res = await req<{ categories: Category[]; vendors: Vendor[] }>(`/search?${q.toString()}`);
     return {
       categories: arr<Category>(res.categories).map((c) => ({ ...c, id: str(c.id) })),
       vendors: arr<Vendor>(res.vendors).map(asVendor),
@@ -304,6 +393,7 @@ const vendors: VendorRepository = {
         method: 'POST',
         headers: {
           ...tunnelHeader(),
+          ...appKeyHeader(),
           ...(token ? { 'X-Seva-Token': token } : {}),
         },
         body: form,
@@ -321,6 +411,7 @@ const vendors: VendorRepository = {
         method: 'DELETE',
         headers: {
           ...tunnelHeader(),
+          ...appKeyHeader(),
           ...(token ? { 'X-Seva-Token': token } : {}),
         },
       },

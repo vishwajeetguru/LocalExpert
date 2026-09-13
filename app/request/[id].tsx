@@ -5,8 +5,10 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppColors } from '../../src/theme';
 import { layout, radius, shadows, spacing } from '../../src/theme/tokens';
-import { RequestService } from '../../src/services';
-import { ServiceRequest } from '../../src/types/models';
+import { RequestService, ChatService, VendorService } from '../../src/services';
+import { ServiceRequest, Vendor } from '../../src/types/models';
+import { useAuthStore } from '../../src/stores/useAuthStore';
+import { useToastStore } from '../../src/stores/useUiStore';
 import { useT } from '../../src/i18n/store';
 import { statusLabel } from '../../src/i18n/status';
 import { AppText } from '../../src/components/ui/AppText';
@@ -23,9 +25,12 @@ export default function RequestDetail() {
   const insets = useSafeAreaInsets();
   const { t } = useT();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const user = useAuthStore((s) => s.user);
+  const showToast = useToastStore((s) => s.show);
   const [req, setReq] = useState<ServiceRequest | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [chatting, setChatting] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -51,6 +56,28 @@ export default function RequestDetail() {
   }
 
   const stepIdx = STEPS.indexOf(req.status === 'cancelled' ? 'pending' : req.status);
+
+  /** Open the real thread for this request — vendor ↔ customer, persisted server-side. */
+  const openChat = async () => {
+    if (!user) return;
+    setChatting(true);
+    try {
+      if (user.role === 'vendor') {
+        const own = user.vendorId ? await VendorService.getById(user.vendorId) : await VendorService.myVendor(user.id);
+        if (!own) throw new Error('Vendor profile not found.');
+        const conv = await ChatService.ensureConversation(req.customerId, req.customerName, own);
+        router.push(`/chat/${conv.id}`);
+      } else {
+        const stub = { id: req.vendorId, businessName: req.vendorName, categoryName: req.categoryName } as Vendor;
+        const conv = await ChatService.ensureConversation(user.id, user.name, stub);
+        router.push(`/chat/${conv.id}`);
+      }
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : t('verify.wrong'), 'error');
+    } finally {
+      setChatting(false);
+    }
+  };
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background, paddingTop: insets.top + 8 }]}>
@@ -131,7 +158,7 @@ export default function RequestDetail() {
           <Row icon="phone" label={t('reqDetail.phone')} value={req.phone} />
         </View>
 
-        <Button label={t('reqDetail.chatBtn')} variant="secondary" icon="chat" fullWidth onPress={() => router.push('/(tabs)/chats')} />
+        <Button label={t('reqDetail.chatBtn')} variant="secondary" icon="chat" fullWidth loading={chatting} onPress={() => void openChat()} />
       </ScrollView>
     </View>
   );

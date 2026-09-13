@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -6,7 +6,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppColors } from '../../src/theme';
 import { layout, radius, shadows, spacing } from '../../src/theme/tokens';
 import { useAuthStore } from '../../src/stores/useAuthStore';
-import { RequestService, VendorService } from '../../src/services';
+import { AuthService, RequestService, VendorService } from '../../src/services';
+import { useSyncStore } from '../../src/stores/useSyncStore';
 import { ServiceRequest, Vendor } from '../../src/types/models';
 import { AppText } from '../../src/components/ui/AppText';
 import { Avatar } from '../../src/components/ui/bits';
@@ -30,10 +31,13 @@ export default function VendorDashboard() {
   const [err, setErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!user) return;
+    const currentUser = useAuthStore.getState().user;
+    if (!currentUser) return;
     setLoading(true);
     try {
-      const v = user.vendorId ? await VendorService.getById(user.vendorId) : await VendorService.myVendor(user.id);
+      const v = currentUser.vendorId
+        ? await VendorService.getById(currentUser.vendorId)
+        : await VendorService.myVendor(currentUser.id);
       setVendor(v);
       if (v) setRequests(await RequestService.forVendor(v.id));
       setErr(null);
@@ -42,9 +46,34 @@ export default function VendorDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, []);
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
+
+  // Live approval: global fingerprint bump (admin approves anywhere) refetches
+  // immediately — same pattern as requests/chats/category screens.
+  const syncRev = useSyncStore((s) => s.rev);
+  useEffect(() => {
+    if (syncRev !== null) void load();
+  }, [syncRev, load]);
+
+  // While pending, poll the vendor directly every 8s so approval appears in
+  // real time even before the 20s global sync tick. Stops on its own once live.
+  // Also refreshes the user — WordPress promotes role/vendorId on approval.
+  const verificationStatus = vendor?.verificationStatus;
+  useEffect(() => {
+    if (verificationStatus !== 'pending') return;
+    const timer = setInterval(async () => {
+      try {
+        const freshUser = await AuthService.currentUser();
+        if (freshUser) useAuthStore.setState({ user: freshUser });
+        await load();
+      } catch {
+        // stay on cached pending state, retry next tick
+      }
+    }, 8000);
+    return () => clearInterval(timer);
+  }, [verificationStatus, load]);
 
   if (!user) {
     return (
@@ -86,7 +115,7 @@ export default function VendorDashboard() {
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScrollView
         contentContainerStyle={{ paddingTop: insets.top + 10, paddingHorizontal: layout.screenPad, paddingBottom: 32 }}
-        refreshControl={<RefreshControl refreshing={false} onRefresh={() => void load()} tintColor={colors.primary} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} tintColor={colors.primary} />}
       >
         <View style={styles.head}>
           <Pressable onPress={() => router.back()} hitSlop={12} style={[styles.back, { backgroundColor: colors.surface }]}>

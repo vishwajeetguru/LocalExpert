@@ -13,6 +13,7 @@
     },
     "android": {
       "package": "com.sevasathi.app",
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "backgroundColor": "#131313",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -29,6 +30,13 @@
       "expo-router",
       "expo-secure-store",
       "expo-font",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#FF4D24"
+        }
+      ],
       [
         "expo-splash-screen",
         {

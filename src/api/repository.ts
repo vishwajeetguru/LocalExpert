@@ -28,6 +28,16 @@ export interface AuthRepository {
   register(name: string, email: string, phone?: string): Promise<AuthResult>;
   requestOtp(email: string): Promise<{ sent: boolean; verified?: boolean; demoCode?: string }>;
   verifyOtp(email: string, code: string): Promise<AuthResult & { demoCode?: string }>;
+  /** Email + password login (verified users with a password only). */
+  loginWithPassword(email: string, password: string): Promise<AuthResult>;
+  /** Set/change password for the logged-in verified user (post-OTP setup). */
+  setPassword(password: string): Promise<User>;
+  /** OTP-gated setup/reset: send a code even for verified users. */
+  requestPasswordReset(email: string): Promise<{ sent: boolean; demoCode?: string }>;
+  /** Verify reset code + set new password in one step (issues a session). */
+  confirmPasswordReset(email: string, code: string, newPassword: string): Promise<AuthResult>;
+  /** Register the Expo push token for this device (enables push notifications). */
+  updatePushToken(token: string): Promise<User>;
   /** Rotates an expiring session. Returns null when re-login is required. */
   refreshSession(): Promise<User | null>;
   /** Move an unverified account to a corrected address + resend code. */
@@ -43,10 +53,10 @@ export interface CategoryRepository {
 }
 
 export interface VendorRepository {
-  list(params?: { categoryId?: ID; query?: string; page?: number; verifiedOnly?: boolean }): Promise<Paged<Vendor>>;
+  list(params?: { categoryId?: ID; query?: string; page?: number; lat?: number; lng?: number; sort?: 'rating' | 'near' }): Promise<Paged<Vendor>>;
   getById(id: ID): Promise<Vendor | null>;
   byCategory(categoryId: ID, page?: number): Promise<Paged<Vendor>>;
-  search(query: string): Promise<{ categories: Category[]; vendors: Vendor[] }>;
+  search(query: string, geo?: { lat: number; lng: number }): Promise<{ categories: Category[]; vendors: Vendor[] }>;
   createDraft(input: VendorDraftInput): Promise<Vendor>;
   updateVendor(id: ID, patch: Partial<Vendor>): Promise<Vendor>;
   /** Upload one listing photo (multipart). Returns the updated vendor. */

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { StyleSheet, TextInput, TextInputProps, View, ViewStyle } from 'react-native';
+import { StyleProp, StyleSheet, TextInput, TextInputProps, TextStyle, View, ViewStyle } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAppColors } from '../../theme';
 import { radius } from '../../theme/tokens';
@@ -11,9 +11,11 @@ interface Props extends TextInputProps {
   error?: string;
   leftIcon?: keyof typeof MaterialCommunityIcons.glyphMap;
   containerStyle?: ViewStyle;
+  /** Extra style for the inner TextInput (e.g. maxHeight to bound a multiline field). Optional — nothing changes when omitted. */
+  inputStyle?: StyleProp<TextStyle>;
 }
 
-export function Input({ label, error, leftIcon, containerStyle, onFocus, onBlur, ...rest }: Props) {
+export function Input({ label, error, leftIcon, containerStyle, inputStyle, onFocus, onBlur, ...rest }: Props) {
   const { colors } = useAppColors();
   const [focused, setFocused] = useState(false);
   return (
@@ -38,13 +40,18 @@ export function Input({ label, error, leftIcon, containerStyle, onFocus, onBlur,
           ) : null}
           <TextInput
             placeholderTextColor={colors.textTertiary}
-            style={[styles.input, { color: colors.text }]}
+            style={[styles.input, { color: colors.text }, inputStyle]}
             onFocus={(e) => {
-              setFocused(true);
+              // Deferred one frame on purpose: a synchronous commit here
+              // lands in the same frame as keyboardWillShow, and on iOS that
+              // can make Reanimated drop the keyboard animation entirely —
+              // the sheet/composer then never lifts and the input stays
+              // buried. The 1-frame delay on the focus ring is imperceptible.
+              requestAnimationFrame(() => setFocused(true));
               onFocus?.(e);
             }}
             onBlur={(e) => {
-              setFocused(false);
+              requestAnimationFrame(() => setFocused(false));
               onBlur?.(e);
             }}
             {...rest}

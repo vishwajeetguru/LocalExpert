@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppColors } from '../src/theme';
 import { layout } from '../src/theme/tokens';
 import { useAppStore } from '../src/stores/useAppStore';
+import { useLocationStore } from '../src/stores/useLocationStore';
 import { VendorService } from '../src/services';
 import { popularSearches } from '../src/api/mock/categories';
 import { Category, Vendor } from '../src/types/models';
@@ -13,6 +14,7 @@ import { useDebouncedValue } from '../src/hooks/useDebouncedValue';
 import { useVendorActions } from '../src/hooks/useVendorActions';
 import { AppText } from '../src/components/ui/AppText';
 import { SearchBar } from '../src/components/ui/SearchBar';
+import { KeyboardAwareScreen } from '../src/components/keyboard/KeyboardAwareScreen';
 import { VendorCard } from '../src/components/vendor/Cards';
 import { EmptyState } from '../src/components/ui/EmptyState';
 import { SkeletonList } from '../src/components/ui/Skeleton';
@@ -25,6 +27,7 @@ export default function Search() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ q?: string }>();
   const { categories, recentSearches, pushRecentSearch, clearRecentSearches } = useAppStore();
+  const gps = useLocationStore((s) => s.coords);
   const { callVendor, setCallVendor, onCall, onChat } = useVendorActions();
   const { t, catName } = useT();
   const [query, setQuery] = useState(typeof params.q === 'string' ? params.q : '');
@@ -49,7 +52,8 @@ export default function Search() {
       }
       setLoading(true);
       try {
-        const res = await VendorService.search(q);
+        // GPS → server attaches live distances to results.
+        const res = await VendorService.search(q, gps ? { lat: gps.lat, lng: gps.lng } : undefined);
         setCats(res.categories);
         setVendors(res.vendors);
         setErr(null);
@@ -59,7 +63,7 @@ export default function Search() {
         setLoading(false);
       }
     })();
-  }, [debounced, attempt]);
+  }, [debounced, attempt, gps]);
 
   const suggestions = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -86,7 +90,8 @@ export default function Search() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: layout.screenPad, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+      {/* Keyboard-aware so results scroll above the open keyboard (autofocused search). */}
+      <KeyboardAwareScreen contentContainerStyle={{ padding: layout.screenPad, paddingBottom: 40 }}>
         {showBlank ? (
           <>
             {recentSearches.length > 0 ? (
@@ -206,7 +211,7 @@ export default function Search() {
             )}
           </>
         )}
-      </ScrollView>
+      </KeyboardAwareScreen>
       <CallConfirmSheet vendor={callVendor} visible={!!callVendor} onClose={() => setCallVendor(null)} />
     </View>
   );

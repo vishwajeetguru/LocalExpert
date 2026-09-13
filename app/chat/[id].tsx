@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { FlatList, Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { router, useLocalSearchParams } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -49,6 +50,16 @@ export default function ChatDetail() {
     return () => clearInterval(timer);
   }, [id]);
 
+  // Keep the latest message visible while typing: the layout already shrinks
+  // around the keyboard (see below); this scrolls the tail back into view
+  // once the keyboard has settled open.
+  useEffect(() => {
+    const sub = Keyboard.addListener('keyboardDidShow', () => {
+      listRef.current?.scrollToEnd({ animated: true });
+    });
+    return () => sub.remove();
+  }, []);
+
   const send = async () => {
     const t = text.trim();
     if (!t || !user || sending) return;
@@ -66,7 +77,7 @@ export default function ChatDetail() {
   };
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[styles.root, { backgroundColor: colors.background }]}>
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
       <View style={[styles.head, { backgroundColor: colors.surface, paddingTop: insets.top + 8 }]}>
         <Pressable onPress={() => router.back()} hitSlop={12} style={{ padding: 6 }}>
           <MaterialCommunityIcons name="arrow-left" size={24} color={colors.text} />
@@ -83,51 +94,70 @@ export default function ChatDetail() {
         </Pressable>
       </View>
 
-      <FlatList
-        ref={listRef}
-        data={messages}
-        keyExtractor={(m) => m.id}
-        contentContainerStyle={{ padding: 16, gap: 8, paddingBottom: 12 }}
-        onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
-        renderItem={({ item }) => {
-          const mine = user && item.senderId === user.id;
-          return (
-            <View style={{ alignItems: mine ? 'flex-end' : 'flex-start', paddingHorizontal: 2 }}>
-              <View
-                style={[
-                  styles.bubble,
-                  mine
-                    ? { backgroundColor: colors.primary, borderBottomRightRadius: 6, ...shadows.glow }
-                    : { backgroundColor: colors.surface, borderBottomLeftRadius: 6, borderColor: colors.borderSoft, borderWidth: 1 },
-                ]}
-              >
-                <AppText variant="body" color={mine ? '#fff' : colors.text}>
-                  {item.text}
+      {/*
+        Native keyboard tracking (react-native-keyboard-controller, provided
+        once at the root). behavior="padding" shrinks this container in
+        layout when the keyboard opens — the message list gets shorter and
+        the composer rides immediately above the keyboard — then restores
+        the exact same layout when it closes. The old RN
+        KeyboardAvoidingView is JS-timed and unreliable inside the native
+        stack + safe-area, which is what left the composer buried on iOS.
+
+        The composer keeps only a 10px inner gap; the home-indicator gap
+        lives in the filler below so the visible gap above the OPEN
+        keyboard stays tight (no double-counted safe area).
+      */}
+      <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={0} style={{ flex: 1 }}>
+        <FlatList
+          ref={listRef}
+          data={messages}
+          keyExtractor={(m) => m.id}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ padding: 16, gap: 8, paddingBottom: 12, flexGrow: 1 }}
+          keyboardShouldPersistTaps="handled"
+          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
+          renderItem={({ item }) => {
+            const mine = user && item.senderId === user.id;
+            return (
+              <View style={{ alignItems: mine ? 'flex-end' : 'flex-start', paddingHorizontal: 2 }}>
+                <View
+                  style={[
+                    styles.bubble,
+                    mine
+                      ? { backgroundColor: colors.primary, borderBottomRightRadius: 6, ...shadows.glow }
+                      : { backgroundColor: colors.surface, borderBottomLeftRadius: 6, borderColor: colors.borderSoft, borderWidth: 1 },
+                  ]}
+                >
+                  <AppText variant="body" color={mine ? '#fff' : colors.text}>
+                    {item.text}
+                  </AppText>
+                </View>
+                <AppText variant="tiny" color={colors.textTertiary} style={{ marginTop: 3 }}>
+                  {timeAgo(item.createdAt)} {mine ? (item.read ? '• Seen' : '• Sent') : ''}
                 </AppText>
               </View>
-              <AppText variant="tiny" color={colors.textTertiary} style={{ marginTop: 3 }}>
-                {timeAgo(item.createdAt)} {mine ? (item.read ? '• Seen' : '• Sent') : ''}
-              </AppText>
-            </View>
-          );
-        }}
-      />
-
-      <View style={[styles.inputBar, { backgroundColor: colors.surface, paddingBottom: insets.bottom + 10 }]}>
-        <TextInput
-          value={text}
-          onChangeText={setText}
-          placeholder={t('chats.typeHint')}
-          placeholderTextColor={colors.textTertiary}
-          style={[styles.input, { backgroundColor: colors.surface2, color: colors.text }]}
-          multiline
-          onSubmitEditing={send}
+            );
+          }}
         />
-        <Pressable onPress={send} style={[styles.send, { backgroundColor: colors.primary, opacity: text.trim() ? 1 : 0.5 }]}>
-          <MaterialCommunityIcons name="send" size={20} color="#fff" />
-        </Pressable>
-      </View>
-    </KeyboardAvoidingView>
+
+        <View style={[styles.inputBar, { backgroundColor: colors.surface }]}>
+          <TextInput
+            value={text}
+            onChangeText={setText}
+            placeholder={t('chats.typeHint')}
+            placeholderTextColor={colors.textTertiary}
+            style={[styles.input, { backgroundColor: colors.surface2, color: colors.text }]}
+            multiline
+            onSubmitEditing={send}
+          />
+          <Pressable onPress={send} style={[styles.send, { backgroundColor: colors.primary, opacity: text.trim() ? 1 : 0.5 }]}>
+            <MaterialCommunityIcons name="send" size={20} color="#fff" />
+          </Pressable>
+        </View>
+      </KeyboardAvoidingView>
+      {/* Home-indicator safe area — same surface as the composer so the two read as one bar. */}
+      <View style={{ height: insets.bottom, backgroundColor: colors.surface }} />
+    </View>
   );
 }
 
@@ -135,7 +165,7 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.06)' },
   bubble: { maxWidth: '78%', borderRadius: 20, paddingHorizontal: 15, paddingVertical: 11 },
-  inputBar: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' },
+  inputBar: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 10, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' },
   input: { flex: 1, borderRadius: 24, paddingHorizontal: 16, paddingVertical: 12, fontSize: 15, maxHeight: 110 },
   send: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
 });

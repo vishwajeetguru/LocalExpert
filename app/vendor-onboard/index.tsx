@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Pressable, StyleSheet, Switch, View } from 'react-native';
 import { router } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,6 +18,7 @@ import { Input } from '../../src/components/ui/Input';
 import { Chip } from '../../src/components/ui/Pills';
 import { LocationPicker } from '../../src/components/vendor/LocationPicker';
 import { phoneOk } from '../../src/utils/format';
+import { KeyboardAwareScreen } from '../../src/components/keyboard/KeyboardAwareScreen';
 import { groupsOf, childrenOf } from '../../src/utils/taxonomy';
 
 const SERVICE_PRESETS: Record<string, string[]> = {
@@ -40,6 +41,15 @@ export default function VendorOnboard() {
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Prefill the business phone from the vendor's account (captured at
+  // signup) so step 3 starts filled — still editable before submit.
+  useEffect(() => {
+    if (user?.phone && !useOnboardStore.getState().phone) {
+      useOnboardStore.getState().set({ phone: user.phone });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const cat = categories.find((c) => c.id === draft.categoryId);
   const serviceGroups = groupsOf(categories, 'services');
   const [groupId, setGroupId] = useState<string>(cat?.parentId ?? serviceGroups[0]?.id ?? '');
@@ -61,7 +71,8 @@ export default function VendorOnboard() {
         <AppText variant="callout" color={colors.textSecondary} align="center" style={{ marginTop: 8, maxWidth: 320 }}>
           {t('onboard.needLoginBody')}
         </AppText>
-        <Button label={t('auth.loginBtn')} fullWidth onPress={() => router.push('/auth/login')} style={{ marginTop: 20 }} />
+        <Button label={t('onboard.createAccount')} fullWidth onPress={() => router.replace('/vendor-onboard/signup')} style={{ marginTop: 20 }} />
+        <Button label={t('onboard.haveAccount')} variant="ghost" fullWidth onPress={() => router.push('/auth/login')} style={{ marginTop: 8 }} />
         <Button label={t('common.back')} variant="ghost" onPress={() => router.back()} style={{ marginTop: 8 }} />
       </View>
     );
@@ -138,7 +149,12 @@ export default function VendorOnboard() {
         ))}
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: layout.screenPad, paddingBottom: 120 }} keyboardShouldPersistTaps="handled">
+      {/* Action button lives INSIDE the scroll content (not an absolute
+          footer) so the keyboard can never cover Save/Next: the focused input
+          scrolls above the keyboard and the button stays reachable below it. */}
+      <KeyboardAwareScreen
+        contentContainerStyle={{ padding: layout.screenPad, paddingBottom: Math.max(32, insets.bottom + 24) }}
+      >
         {step === 0 ? (
           serviceGroups.length === 0 ? (
             <EmptyState
@@ -260,15 +276,15 @@ export default function VendorOnboard() {
             </View>
           </View>
         ) : null}
-      </ScrollView>
 
-      <View style={[styles.footer, { backgroundColor: colors.surface }]}>
-        {step < 3 ? (
-          <Button label={step === 0 ? t('common.continue') : t('onboard.next')} fullWidth onPress={next} />
-        ) : (
-          <Button label={t('onboard.submit')} loading={submitting} fullWidth onPress={submit} />
-        )}
-      </View>
+        <View style={{ marginTop: 20 }}>
+          {step < 3 ? (
+            <Button label={step === 0 ? t('common.continue') : t('onboard.next')} fullWidth onPress={next} />
+          ) : (
+            <Button label={t('onboard.submit')} loading={submitting} fullWidth onPress={submit} />
+          )}
+        </View>
+      </KeyboardAwareScreen>
     </View>
   );
 }
@@ -299,5 +315,4 @@ const styles = StyleSheet.create({
   switchRow: { flexDirection: 'row', alignItems: 'center', borderRadius: radius.lg, padding: spacing.lg },
   info: { flexDirection: 'row', gap: 10, borderRadius: radius.md, padding: spacing.lg },
   review: { borderRadius: radius.lg, padding: spacing.lg },
-  footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 16, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' },
 });

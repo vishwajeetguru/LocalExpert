@@ -18,7 +18,7 @@ import { StatusPill, VerifiedBadge } from '../../src/components/ui/Pills';
 import { EmptyState } from '../../src/components/ui/EmptyState';
 import { SkeletonList } from '../../src/components/ui/Skeleton';
 import { CallConfirmSheet } from '../../src/components/sheets/CallConfirmSheet';
-import { BottomSheet } from '../../src/components/sheets/BottomSheet';
+import { ReviewSheet } from '../../src/components/sheets/ReviewSheet';
 import { Button } from '../../src/components/ui/Button';
 import { Input } from '../../src/components/ui/Input';
 import { Pop } from '../../src/components/motion/AnimatedIcon';
@@ -312,7 +312,12 @@ export default function VendorProfile() {
         </Pressable>
       </View>
       <CallConfirmSheet vendor={callVendor} visible={!!callVendor} onClose={() => setCallVendor(null)} />
-      <BottomSheet visible={reviewOpen} onClose={() => setReviewOpen(false)}>
+      {/* Scoped review sheet: single keyboard lift, no keyboard-aware
+          inner scroll (short content — an inner keyboard pad would double-
+          compensate and push content off-screen). The input is height-
+          capped so long reviews scroll INSIDE the field with the cursor
+          always visible above the keyboard. */}
+      <ReviewSheet visible={reviewOpen} onClose={() => setReviewOpen(false)}>
         <AppText variant="h3" align="center">
           {t('review.title')}
         </AppText>
@@ -333,9 +338,10 @@ export default function VendorProfile() {
           onChangeText={setReviewText}
           multiline
           numberOfLines={4}
+          inputStyle={{ maxHeight: 132 }}
         />
         <Button label={t('review.submit')} loading={sendingReview} fullWidth onPress={submitReview} style={{ marginTop: 12 }} />
-      </BottomSheet>
+      </ReviewSheet>
     </View>
   );
 }

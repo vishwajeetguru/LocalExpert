@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Switch, View } from 'react-native';
 import { router } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
@@ -16,6 +16,7 @@ import { AppText } from '../../src/components/ui/AppText';
 import { Button } from '../../src/components/ui/Button';
 import { Input } from '../../src/components/ui/Input';
 import { LocationPicker } from '../../src/components/vendor/LocationPicker';
+import { KeyboardAwareScreen } from '../../src/components/keyboard/KeyboardAwareScreen';
 
 export default function EditService() {
   const { colors } = useAppColors();
@@ -125,7 +126,9 @@ export default function EditService() {
         <AppText variant="h2">{t('edit.title')}</AppText>
         <View style={{ width: 42 }} />
       </View>
-      <ScrollView contentContainerStyle={{ padding: layout.screenPad, gap: 12 }}>
+      <KeyboardAwareScreen
+        contentContainerStyle={{ padding: layout.screenPad, gap: 12, paddingBottom: Math.max(40, insets.bottom + 24) }}
+      >
         <View style={[styles.info, { backgroundColor: colors.primarySoft }]}>
           <AppText variant="caption" color={colors.textSecondary}>
             {t('edit.note')}
@@ -177,7 +180,7 @@ export default function EditService() {
           </AppText>
         </View>
         <Button label={t('edit.save')} loading={saving} fullWidth onPress={save} />
-      </ScrollView>
+      </KeyboardAwareScreen>
     </View>
   );
 }

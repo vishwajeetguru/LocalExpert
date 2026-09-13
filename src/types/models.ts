@@ -90,6 +90,8 @@ export interface User {
   avatar?: string;
   city: string;
   emailVerified: boolean;
+  /** True when the account has an email+password login (live API mode). */
+  hasPassword: boolean;
   /** ISO expiry of the passwordless session (live API mode). */
   tokenExpiresAt?: string | null;
   savedVendorIds: ID[];

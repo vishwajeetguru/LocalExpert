@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,6 +16,7 @@ import { Button } from '../../../src/components/ui/Button';
 import { Input } from '../../../src/components/ui/Input';
 import { Chip } from '../../../src/components/ui/Pills';
 import { phoneOk } from '../../../src/utils/format';
+import { KeyboardAwareScreen } from '../../../src/components/keyboard/KeyboardAwareScreen';
 
 const TIMES = ['09:00 AM', '11:00 AM', '02:00 PM', '04:00 PM', '06:00 PM', '07:30 PM'];
 
@@ -88,7 +89,9 @@ export default function NewRequest() {
         <AppText variant="h2">{t('newReq.title')}</AppText>
         <View style={{ width: 42 }} />
       </View>
-      <ScrollView contentContainerStyle={{ padding: layout.screenPad, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScreen
+        contentContainerStyle={{ padding: layout.screenPad, paddingBottom: Math.max(40, insets.bottom + 24) }}
+      >
         {vendor ? (
           <View style={[styles.vrow, { backgroundColor: colors.card }]}>
             <Avatar name={vendor.businessName} />
@@ -126,7 +129,7 @@ export default function NewRequest() {
             {t('newReq.note')}
           </AppText>
         </View>
-      </ScrollView>
+      </KeyboardAwareScreen>
     </View>
   );
 }

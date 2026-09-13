@@ -15,6 +15,7 @@ import { Button } from '../../src/components/ui/Button';
 import { Input } from '../../src/components/ui/Input';
 import { Float } from '../../src/components/motion/AnimatedIcon';
 import { tap } from '../../src/utils/device';
+import { KeyboardAwareScreen } from '../../src/components/keyboard/KeyboardAwareScreen';
 
 const CODE_LEN = 6;
 const RESEND_WAIT = 60;
@@ -28,7 +29,7 @@ export default function Verify() {
   const { colors } = useAppColors();
   const insets = useSafeAreaInsets();
   const { t } = useT();
-  const { email, demoCode } = useLocalSearchParams<{ email?: string; demoCode?: string }>();
+  const { email, demoCode, next } = useLocalSearchParams<{ email?: string; demoCode?: string; next?: string }>();
   const verify = useAuthStore((s) => s.verify);
   const loading = useAuthStore((s) => s.loading);
   const showToast = useToastStore((s) => s.show);
@@ -58,9 +59,18 @@ export default function Verify() {
     tap('medium');
     setError(null);
     try {
-      await verify(currentEmail, value);
+      const user = await verify(currentEmail, value);
       showToast(t('verify.done'));
-      router.replace('/(tabs)');
+      // Vendor signups continue into the business onboarding wizard;
+      // everyone else follows the standard post-verify path below.
+      const dest = next === 'vendor' ? '/vendor-onboard' : '/(tabs)';
+      // Fresh accounts set a password right after proving the inbox — daily
+      // logins then use email + password instead of OTP.
+      if (!user.hasPassword) {
+        router.replace({ pathname: '/auth/set-password', params: { mode: 'setup', next: next ?? '' } } as never);
+        return;
+      }
+      router.replace(dest as never);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('verify.wrong'));
     }
@@ -131,7 +141,9 @@ export default function Verify() {
           <MaterialCommunityIcons name="arrow-left" size={22} color={colors.text} />
         </Pressable>
       </View>
-      <View style={{ paddingHorizontal: layout.screenPad, alignItems: 'center' }}>
+      <KeyboardAwareScreen
+        contentContainerStyle={{ paddingHorizontal: layout.screenPad, alignItems: 'center', paddingBottom: Math.max(32, insets.bottom + 24) }}
+      >
         <Float dy={5}>
           <View style={[styles.badge, { backgroundColor: colors.primarySoft }]}>
             <MaterialCommunityIcons name="email-check" size={36} color={colors.primary} />
@@ -214,7 +226,7 @@ export default function Verify() {
         <AppText variant="caption" color={colors.textTertiary} align="center" style={{ marginTop: 4, maxWidth: 300 }}>
           {t('verify.note')}
         </AppText>
-      </View>
+      </KeyboardAwareScreen>
     </View>
   );
 }

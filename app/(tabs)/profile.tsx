@@ -1,17 +1,20 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppColors } from '../../src/theme';
 import { layout, radius, shadows } from '../../src/theme/tokens';
 import { useAuthStore } from '../../src/stores/useAuthStore';
 import { useToastStore } from '../../src/stores/useUiStore';
+import { VendorService } from '../../src/services';
+import { Vendor } from '../../src/types/models';
 import { useLocale, useT } from '../../src/i18n/store';
 import { LOCALES } from '../../src/i18n/locales';
 import { AppText } from '../../src/components/ui/AppText';
 import { Button } from '../../src/components/ui/Button';
 import { Input } from '../../src/components/ui/Input';
+import { VerifiedBadge } from '../../src/components/ui/Pills';
 import { BottomSheet } from '../../src/components/sheets/BottomSheet';
 import { ConfirmDialog } from '../../src/components/feedback/ConfirmDialog';
 
@@ -31,6 +34,22 @@ export default function ProfileTab() {
   const [phone, setPhone] = useState('');
   const [city, setCity] = useState('');
   const [saving, setSaving] = useState(false);
+  const [vendor, setVendor] = useState<Vendor | null>(null);
+
+  const isVendorAccount = !!user && user.role === 'vendor';
+  const loadVendor = useCallback(async () => {
+    const me = useAuthStore.getState().user;
+    if (!me || me.role !== 'vendor') {
+      setVendor(null);
+      return;
+    }
+    try {
+      setVendor(me.vendorId ? await VendorService.getById(me.vendorId) : await VendorService.myVendor(me.id));
+    } catch {
+      // identity card keeps account-level info; dashboard shows errors
+    }
+  }, []);
+  useFocusEffect(useCallback(() => { void loadVendor(); }, [loadVendor]));
 
   const openEdit = () => {
     if (!user) return;
@@ -74,7 +93,29 @@ export default function ProfileTab() {
             <Button label={t('profile.emailBtn')} icon="email" fullWidth onPress={() => router.push('/auth/login')} style={{ marginTop: 16 }} />
           </View>
           <View style={{ marginTop: 12, gap: 12 }}>
-            <MenuRow icon="store-plus" tint="#E9F6EE" iconColor="#16A34A" label={t('profile.addService')} sub={t('profile.addServiceSub')} onPress={() => router.push('/vendor-onboard')} />
+            {/* Vendor entry — deliberately NOT a MenuRow: a solid partner
+                card so vendors instantly see a different action from the
+                customer login above. Routes to vendor SIGNUP (account +
+                business wizard), never the login screen. */}
+            <Pressable
+              onPress={() => router.push('/vendor-onboard/signup')}
+              style={[styles.vendorCta, { backgroundColor: colors.primary }, shadows.glow]}
+            >
+              <View style={styles.vendorIc}>
+                <MaterialCommunityIcons name="store-plus" size={26} color="#fff" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <AppText variant="bodyStrong" color="#fff">
+                  {t('profile.joinTitle')}
+                </AppText>
+                <AppText variant="callout" color="rgba(255,255,255,0.85)" style={{ marginTop: 2 }}>
+                  {t('profile.joinSub')}
+                </AppText>
+              </View>
+              <View style={styles.vendorGo}>
+                <MaterialCommunityIcons name="arrow-right" size={20} color={colors.primary} />
+              </View>
+            </Pressable>
             <MenuRow icon="translate" tint="#F3E8FF" iconColor="#7C3AED" label={t('profile.language')} sub={langLabel} onPress={() => router.push('/language')} />
           </View>
         </View>
@@ -83,7 +124,8 @@ export default function ProfileTab() {
   }
 
   const isVendor = user.role === 'vendor';
-  const initials = user.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+  const displayName = isVendor && vendor ? vendor.businessName : user.name;
+  const initials = displayName.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -117,17 +159,26 @@ export default function ProfileTab() {
             </View>
             <View style={{ flex: 1 }}>
               <AppText variant="h2" numberOfLines={1}>
-                {user.name}
+                {displayName}
               </AppText>
               <AppText variant="callout" color={colors.textSecondary} numberOfLines={1}>
                 {user.email}
               </AppText>
-              <View style={[styles.locPill, { backgroundColor: colors.surface2 }]}>
-                <MaterialCommunityIcons name="map-marker" size={13} color={colors.text} />
-                <AppText variant="captionStrong" numberOfLines={1}>
-                  {user.city}, Maharashtra
-                </AppText>
-              </View>
+              {isVendor && vendor ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                  {vendor.isVerified ? <VerifiedBadge compact /> : null}
+                  <AppText variant="caption" color={colors.textSecondary} numberOfLines={1}>
+                    {vendor.categoryName} • {vendor.phone}
+                  </AppText>
+                </View>
+              ) : (
+                <View style={[styles.locPill, { backgroundColor: colors.surface2 }]}>
+                  <MaterialCommunityIcons name="map-marker" size={13} color={colors.text} />
+                  <AppText variant="captionStrong" numberOfLines={1}>
+                    {user.city}, Maharashtra
+                  </AppText>
+                </View>
+              )}
               <AppText variant="calloutStrong" color={colors.primary} style={{ marginTop: 6 }}>
                 {isVendor ? t('profile.vendorAcc') : t('profile.customer')}
               </AppText>
@@ -139,40 +190,21 @@ export default function ProfileTab() {
           </View>
         </View>
 
-        {/* Menu */}
+        {/* Menu — Saved is a customer feature; vendors manage work, not bookmarks. */}
         <View style={{ marginTop: 14, gap: 12 }}>
-          <MenuRow icon="bookmark" tint="#FFF1EB" iconColor={colors.primary} label={t('profile.saved')} sub={`${user.savedVendorIds.length}`} onPress={() => router.push('/saved')} />
+          {isVendor ? null : (
+            <MenuRow icon="bookmark" tint="#FFF1EB" iconColor={colors.primary} label={t('profile.saved')} sub={`${user.savedVendorIds.length}`} onPress={() => router.push('/saved')} />
+          )}
           <MenuRow icon="clipboard-text" tint="#FFF4E5" iconColor="#D97706" label={t('profile.requests')} sub={t('profile.requestsSub')} onPress={() => router.push('/(tabs)/requests')} />
           <MenuRow icon="chat" tint="#E8F1FE" iconColor="#2563EB" label={t('profile.chats')} sub={t('profile.chatsSub')} onPress={() => router.push('/(tabs)/chats')} />
+          {/* Vendor entry points live ONLY on the logged-out profile — a user
+              logged in as a customer cannot join as a vendor from here. */}
           {isVendor ? (
             <MenuRow icon="view-dashboard" tint="#E9F6EE" iconColor="#16A34A" label={t('profile.dashboard')} sub={t('profile.dashSub')} onPress={() => router.push('/vendor-dashboard')} />
-          ) : (
-            <MenuRow icon="store-plus" tint="#E9F6EE" iconColor="#16A34A" label={t('profile.become')} sub={t('profile.becomeSub')} onPress={() => router.push('/vendor-onboard')} />
-          )}
+          ) : null}
           <MenuRow icon="translate" tint="#F3E8FF" iconColor="#7C3AED" label={t('profile.language')} sub={langLabel} onPress={() => router.push('/language')} />
           <MenuRow icon="logout" tint="#FDECEC" iconColor={colors.error} label={t('profile.logout')} sub={user.email} danger onPress={() => setConfirmLogout(true)} />
         </View>
-
-        {/* Vendor CTA */}
-        {!isVendor ? (
-          <View style={[styles.joinBanner, { backgroundColor: '#FFF1EB' }]}>
-            <View style={styles.crown}>
-              <MaterialCommunityIcons name="crown" size={26} color={colors.primary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <AppText variant="bodyStrong">{t('profile.joinTitle')}</AppText>
-              <AppText variant="callout" color={colors.textSecondary}>
-                {t('profile.joinSub')}
-              </AppText>
-            </View>
-            <Pressable onPress={() => router.push('/vendor-onboard')} style={[styles.getStarted, { backgroundColor: colors.primary }]}>
-              <AppText variant="calloutStrong" color="#fff" numberOfLines={1}>
-                {t('profile.getStarted')}
-              </AppText>
-              <MaterialCommunityIcons name="arrow-right" size={16} color="#fff" />
-            </Pressable>
-          </View>
-        ) : null}
       </ScrollView>
 
       {/* Edit profile sheet */}
@@ -252,10 +284,7 @@ const styles = StyleSheet.create({
   },
   row: { flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: radius.lg, padding: 16, ...shadows.card },
   ic: { width: 52, height: 52, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  joinBanner: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.lg, padding: 16, marginTop: 14 },
-  crown: {
-    width: 52, height: 52, borderRadius: 18, backgroundColor: 'rgba(255,77,36,0.12)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  getStarted: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11 },
+  vendorCta: { flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: radius.lg, padding: 18 },
+  vendorIc: { width: 52, height: 52, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' },
+  vendorGo: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
 });

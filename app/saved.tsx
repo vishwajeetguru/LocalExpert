@@ -61,6 +61,21 @@ export default function Saved() {
     );
   }
 
+  // Saved vendors is a customer feature — vendors live in their Dashboard.
+  if (user.role === 'vendor') {
+    return (
+      <View style={[styles.center, { backgroundColor: colors.background }]}>
+        <EmptyState
+          icon="view-dashboard"
+          title={t('saved.vendorTitle')}
+          body={t('saved.vendorBody')}
+          actionLabel={t('profile.dashboard')}
+          onAction={() => router.replace('/vendor-dashboard')}
+        />
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background, paddingTop: insets.top + 8 }]}>
       <View style={styles.head}>

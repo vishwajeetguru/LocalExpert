@@ -11,6 +11,10 @@ interface AuthState {
   login: (email: string, name?: string) => Promise<AuthResult>;
   register: (name: string, email: string, phone?: string) => Promise<AuthResult>;
   verify: (email: string, code: string) => Promise<User>;
+  loginWithPassword: (email: string, password: string) => Promise<User>;
+  setPassword: (password: string) => Promise<User>;
+  requestPasswordReset: (email: string) => Promise<{ sent: boolean; demoCode?: string }>;
+  confirmPasswordReset: (email: string, code: string, newPassword: string) => Promise<User>;
   changeEmail: (newEmail: string) => Promise<{ sent: boolean; demoCode?: string }>;
   logout: () => Promise<void>;
   updateProfile: (patch: Partial<User>) => Promise<void>;
@@ -59,6 +63,45 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ loading: true });
     try {
       const res = await AuthService.verifyOtp(email, code);
+      set({ user: res.user });
+      return res.user;
+    } finally {
+      set({ loading: false });
+    }
+  },
+  loginWithPassword: async (email, password) => {
+    set({ loading: true });
+    try {
+      // Password login issues a real session (verified + password required).
+      const res = await AuthService.loginWithPassword(email, password);
+      set({ user: res.user });
+      return res.user;
+    } finally {
+      set({ loading: false });
+    }
+  },
+  setPassword: async (password) => {
+    set({ loading: true });
+    try {
+      const user = await AuthService.setPassword(password);
+      set({ user });
+      return user;
+    } finally {
+      set({ loading: false });
+    }
+  },
+  requestPasswordReset: async (email) => {
+    set({ loading: true });
+    try {
+      return await AuthService.requestPasswordReset(email);
+    } finally {
+      set({ loading: false });
+    }
+  },
+  confirmPasswordReset: async (email, code, newPassword) => {
+    set({ loading: true });
+    try {
+      const res = await AuthService.confirmPasswordReset(email, code, newPassword);
       set({ user: res.user });
       return res.user;
     } finally {

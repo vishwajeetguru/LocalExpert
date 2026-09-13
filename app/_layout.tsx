@@ -4,6 +4,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import * as SplashScreen from 'expo-splash-screen';
 import {
   Nunito_800ExtraBold,
@@ -21,6 +22,7 @@ import { useAuthStore } from '../src/stores/useAuthStore';
 import { useAppStore } from '../src/stores/useAppStore';
 import { useLocale } from '../src/i18n/store';
 import { useLiveSync } from '../src/hooks/useLiveSync';
+import { usePush } from '../src/hooks/usePush';
 import { useSyncStore } from '../src/stores/useSyncStore';
 import { MaintenanceScreen } from '../src/components/MaintenanceScreen';
 import { AuthRequiredSheet } from '../src/components/sheets/AuthRequiredSheet';
@@ -79,6 +81,7 @@ export default function RootLayout() {
   void nunitoLoaded;
   void dmLoaded;
   useLiveSync();
+  usePush();
 
   useEffect(() => {
     // Boot can never hang on the network: local state first, then at most
@@ -87,17 +90,17 @@ export default function RootLayout() {
     const timeout = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
     (async () => {
       try {
-        console.log('[boot] hydrate start');
+        if (__DEV__) console.log('[boot] hydrate start');
         await hydrate();
         await hydrateLocale();
-        console.log('[boot] hydrate done, loading home');
+        if (__DEV__) console.log('[boot] hydrate done, loading home');
         await Promise.race([loadHome(), timeout(5000)]);
-        console.log('[boot] home settled');
+        if (__DEV__) console.log('[boot] home settled');
       } catch (e) {
-        console.log('[boot] failed (non-fatal):', e instanceof Error ? e.message : e);
+        if (__DEV__) console.log('[boot] failed (non-fatal):', e instanceof Error ? e.message : e);
       } finally {
         await SplashScreen.hideAsync();
-        console.log('[boot] splash hidden');
+        if (__DEV__) console.log('[boot] splash hidden');
       }
     })();
   }, [hydrate, hydrateLocale, loadHome]);
@@ -106,6 +109,7 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
+      <KeyboardProvider>
       <SafeAreaProvider>
         <RootErrorBoundary>
         <StatusBar style={isDark ? 'light' : 'dark'} />
@@ -131,8 +135,10 @@ export default function RootLayout() {
           <Stack.Screen name="chat/[id]" />
           <Stack.Screen name="auth/login" options={{ presentation: 'modal' }} />
           <Stack.Screen name="auth/verify" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="auth/set-password" options={{ presentation: 'modal' }} />
           <Stack.Screen name="saved" />
           <Stack.Screen name="vendor-onboard/index" />
+          <Stack.Screen name="vendor-onboard/signup" />
           <Stack.Screen name="vendor-onboard/success" options={{ gestureEnabled: false }} />
           <Stack.Screen name="vendor-dashboard/index" />
           <Stack.Screen name="vendor-dashboard/edit" options={{ presentation: 'modal' }} />
@@ -143,6 +149,7 @@ export default function RootLayout() {
         )}
         </RootErrorBoundary>
       </SafeAreaProvider>
+      </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }

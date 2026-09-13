@@ -8,6 +8,7 @@ export const mockCustomer: User = {
   role: 'customer',
   city: 'Shegaon',
   emailVerified: true,
+  hasPassword: false,
   savedVendorIds: ['v-sharma-electricals', 'v-smile-dental'],
   createdAt: '2025-01-10T10:00:00Z',
 };
@@ -20,6 +21,7 @@ export const mockVendorOwner: User = {
   role: 'vendor',
   city: 'Shegaon',
   emailVerified: true,
+  hasPassword: false,
   savedVendorIds: [],
   vendorId: 'v-sharma-electricals',
   createdAt: '2024-02-11T10:00:00Z',
